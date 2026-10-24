@@ -9,7 +9,8 @@
  *   answer  — "choice" (pick one of 3) or "type" (number pad), unless the
  *             parent chose a fixed answer form in the settings
  *   pics    — the exercise is shown with pictures from the start
- *   frame   — the ten frame is shown from the start
+ *   frame   — the help picture is shown from the start
+ *   choiceOnly — always answered by choosing (זוגי / אי־זוגי)
  *   missing — share of exercises with a missing number (3 + ? = 7)
  *   other kind-specific limits (max, carry, total…) */
 (() => {
@@ -62,6 +63,19 @@
         { d: "חברים של 100 בעשרות (30 + ? = 100)", kind: "bond100", answer: "type" },
       ],
     },
+    {
+      id: "parity",
+      name: "זוגי ואי־זוגי",
+      start: { א: 2, ב: 4 },
+      levels: [
+        { d: "זוגי או אי־זוגי עד 10, עם נקודות בזוגות", kind: "parity", max: 10, frame: true, answer: "choice", choiceOnly: true },
+        { d: "זוגי או אי־זוגי עד 20", kind: "parity", max: 20, answer: "choice", choiceOnly: true },
+        { d: "זוגי או אי־זוגי עד 100 (לפי ספרת האחדות)", kind: "parity", max: 100, answer: "choice", choiceOnly: true },
+        { d: "ספירה בקפיצות של 2 (2, 4, 6, ?)", kind: "seq", steps: [2], max: 30, answer: "choice" },
+        { d: "ספירה בקפיצות של 2, 5 ו־10, עד 100", kind: "seq", steps: [2, 5, 10], max: 100, oddStart: true, answer: "type" },
+        { d: "ספירה אחורה בקפיצות של 2, 5 ו־10", kind: "seq", steps: [2, 5, 10], max: 100, oddStart: true, back: true, answer: "type" },
+      ],
+    },
   ];
 
   // Everything the guide says. A string, or { m, f } by how the child is addressed.
@@ -79,6 +93,11 @@
     done: { m: "סִיַּמְתָּ לְהַיּוֹם!", f: "סִיַּמְתְּ לְהַיּוֹם!" },
     newSticker: { m: "קִבַּלְתָּ מַדְבֵּקָה!", f: "קִבַּלְתְּ מַדְבֵּקָה!" },
     levelUp: { m: "וְעָבַרְתָּ שָׁלָב! מַדְבֵּקַת זָהָב!", f: "וְעָבַרְתְּ שָׁלָב! מַדְבֵּקַת זָהָב!" },
+    evenOrOdd: "זוּגִי אוֹ אִי־זוּגִי",
+    even: "זוּגִי",
+    odd: "אִי־זוּגִי",
+    countBy: "סוֹפְרִים בִּקְפִיצוֹת שֶׁל",
+    countBack: "סוֹפְרִים אֲחוֹרָה בִּקְפִיצוֹת שֶׁל",
     noStickersYet: { m: "עוֹד אֵין מַדְבֵּקוֹת. בּוֹא נְשַׂחֵק!", f: "עוֹד אֵין מַדְבֵּקוֹת. בּוֹאִי נְשַׂחֵק!" },
   };
 
@@ -88,6 +107,9 @@
     "-": { key: "op.minus", text: "פָּחוֹת" },
     "=": { key: "op.eq", text: "שָׁוֶה" },
   };
+
+  // The two answers of the even/odd exercise, as shown on the cards.
+  const PARITY_LABEL = { even: "זוּגִי", odd: "אִי־זוּגִי" };
 
   // A sticker for each finished session, in this order; gold ones for a passed level.
   const STICKERS = [
@@ -100,11 +122,12 @@
   const PICS = ["🍎", "🍓", "⭐", "🎈", "🐟", "🍪", "🌸", "🐞", "🍋", "🧸"];
 
   App.data = {
-    APP_NAME: "אחד",
+    APP_NAME: "אינסוף",
     GRADES: ["א", "ב"],
     TOPICS,
     PHRASES,
     OPS,
+    PARITY_LABEL,
     STICKERS,
     GOLD,
     PICS,

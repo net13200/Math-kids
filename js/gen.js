@@ -3,7 +3,10 @@
  * An exercise is { t, lv, a, op, b, c, m }: a op b = c, where m names the
  * unknown ("a", "b" or "c"). It never has a negative number, subtraction never
  * goes below zero, and carrying (מעבר עשרת / המרה) appears only where the
- * level asks for it. `rnd` can be replaced for tests. */
+ * level asks for it. Two other forms (field f):
+ *   { f: "par", n }           — is n even or odd? The answer is "even" / "odd".
+ *   { f: "seq", seq, h, s }   — skip counting by s; seq[h] is the missing number.
+ * `rnd` can be replaced for tests. */
 (() => {
   "use strict";
 
@@ -114,12 +117,34 @@
     },
   };
 
+  // ---------- Even / odd and skip counting ----------
+  const FORMS = {
+    parity(L) {
+      // Mostly the upper part of the range: to 20 means mostly 11–20.
+      const lo = L.max <= 10 ? 1 : L.max <= 20 ? (chance(0.7) ? 11 : 1) : 21;
+      return { f: "par", n: int(lo, L.max - (L.max > 20 ? 1 : 0)) };
+    },
+    seq(L) {
+      const s = pick(L.steps);
+      const room = Math.floor((L.max - 3 * s) / s);
+      let start = s * int(1, room);
+      // Counting by 2 from an odd number (3, 5, 7…), on the levels that allow it.
+      if (s === 2 && L.oddStart && chance(0.4) && start + 7 <= L.max) start++;
+      let seq = [0, 1, 2, 3].map((i) => start + i * s);
+      if (L.back) seq = seq.reverse();
+      const h = chance(0.6) ? 3 : int(0, 2);
+      return { f: "seq", seq, h, s };
+    },
+  };
+  const PARITY = (n) => (n % 2 ? "odd" : "even");
+
   function level(t, lv) {
     return D.topic(t).levels[lv - 1];
   }
 
   function make(t, lv) {
     const L = level(t, lv);
+    if (FORMS[L.kind]) return { t, lv, ...FORMS[L.kind](L) };
     const x = KINDS[L.kind](L);
     const c = x.op === "+" ? x.a + x.b : x.a - x.b;
     let m = x.m || "c";
@@ -130,12 +155,20 @@
     return { t, lv, a: x.a, op: x.op, b: x.b, c, m };
   }
 
-  const answer = (q) => q[q.m];
-  const key = (q) => `${q.t}:${q.m === "a" ? "?" : q.a}${q.op}${q.m === "b" ? "?" : q.b}=${q.m === "c" ? "?" : q.c}`;
+  const answer = (q) => (q.f === "par" ? PARITY(q.n) : q.f === "seq" ? q.seq[q.h] : q[q.m]);
+  const seqText = (q, filled) => q.seq.map((x, i) => (i === q.h && !filled ? "?" : x)).join(", ");
+  const key = (q) =>
+    q.f === "par"
+      ? `${q.t}:${q.n}`
+      : q.f === "seq"
+      ? `${q.t}:${seqText(q)}`
+      : `${q.t}:${q.m === "a" ? "?" : q.a}${q.op}${q.m === "b" ? "?" : q.b}=${q.m === "c" ? "?" : q.c}`;
   const sign = (op) => (op === "-" ? "−" : op);
 
   // "8 + 5 = ?" (shown left to right).
   function text(q, filled) {
+    if (q.f === "par") return `${q.n}: ${filled ? D.PARITY_LABEL[answer(q)] : "זוגי / אי־זוגי"}`;
+    if (q.f === "seq") return seqText(q, filled);
     const v = (k) => (q.m === k ? (filled ? String(answer(q)) : "?") : String(q[k]));
     return `${v("a")} ${sign(q.op)} ${v("b")} = ${v("c")}`;
   }
@@ -145,7 +178,10 @@
   // Three answers to choose from: the answer and two near misses (±1, or a
   // typical slip such as adding instead of subtracting). All different, none negative.
   function choices(q) {
+    // Even on the right, odd on the left (the page is right to left).
+    if (q.f === "par") return ["even", "odd"];
     const ans = answer(q);
+    if (q.f === "seq") return shuffled([ans, ...near2(ans, [ans - 1, ans + 1], [ans - q.s, ans + q.s, ans + 2, ans - 2])]);
     const L = level(q.t, q.lv);
     const tens = isRound(ans) && ans >= 10 && /Tens|bond100/.test(L.kind);
     const near = tens ? [ans - 10, ans + 10] : [ans - 1, ans + 1];
@@ -162,7 +198,20 @@
     take(near);
     take(slips.filter((n) => Math.abs(n - ans) <= Math.max(5, ans)));
     while (out.length < 2) take([...near, ...far, ans + 3, ans + 4]);
-    const all = [ans, ...out];
+    return shuffled([ans, ...out]);
+  }
+
+  // Two different near misses, none negative: one from `near`, one from `more`.
+  function near2(ans, near, more) {
+    const out = [];
+    for (const pool of [near, more, [...near, ...more, ans + 3, ans + 4, ans + 5]]) {
+      const cands = pool.filter((n) => n >= 0 && n !== ans && !out.includes(n));
+      if (cands.length && out.length < 2) out.push(pick(cands));
+    }
+    return out;
+  }
+
+  function shuffled(all) {
     for (let i = all.length - 1; i > 0; i--) {
       const j = Math.floor(rnd() * (i + 1));
       [all[i], all[j]] = [all[j], all[i]];
@@ -173,6 +222,20 @@
   // ---------- The way to the answer, shown after a second miss ----------
   // Lines of an equation chain, left to right: "8 + 5 = 8 + 2 + 3 = 10 + 3 = 13".
   function steps(q) {
+    if (q.f === "par") {
+      // 7 = 2 + 2 + 2 + 1: pairs, and one left over. Above 10, only the units digit counts.
+      const u = q.n <= 10 ? q.n : q.n % 10;
+      if (u < 3) return [];
+      const parts = [...Array(Math.floor(u / 2)).fill(2), ...(u % 2 ? [1] : [])];
+      return [`${u} = ${parts.join(" + ")}`];
+    }
+    if (q.f === "seq") {
+      // 6 + 2 = 8 (the jump from the number before it).
+      const up = q.seq[1] > q.seq[0];
+      const ans = answer(q);
+      if (q.h > 0) return [`${q.seq[q.h - 1]} ${up ? "+" : "−"} ${q.s} = ${ans}`];
+      return [`${q.seq[1]} ${up ? "−" : "+"} ${q.s} = ${ans}`];
+    }
     const { a, b, c } = q;
     const lines = [];
     if (q.m !== "c") {
@@ -250,8 +313,22 @@
   // frames: ten frames of dots (numbers to 20). blocks: tens rods and unit cubes.
   // Each cell / cube is "a" (first number), "b" (second), "x" (taken away) or
   // "slot" (still missing).
+  // A sentence shown above the steps, when the numbers alone don't say it.
+  function stepsNote(q) {
+    if (q.f !== "par") return null;
+    const label = D.PARITY_LABEL[answer(q)];
+    if (q.n > 10) return `ספרת האחדות היא ${q.n % 10}, ולכן ${q.n} ${label}`;
+    const pairs = Math.floor(q.n / 2);
+    if (!pairs) return "אחד לבד, בלי זוג — אִי־זוּגִי";
+    return `${pairs === 1 ? "זוג אחד" : pairs + " זוגות"}${q.n % 2 ? " ועוד אחד לבד" : ", בלי אחד לבד"} — ${label}`;
+  }
+
   function visual(q) {
     const L = level(q.t, q.lv);
+    // Dots in pairs; one left alone means odd. Above 20, the units digit only.
+    if (q.f === "par") return { type: "pairs", n: q.n <= 20 ? q.n : q.n % 10, units: q.n > 20, always: !!L.frame };
+    // Jumps along the sequence: 2 ⌒+2⌒ 4 ⌒+2⌒ 6.
+    if (q.f === "seq") return { type: "hops", seq: q.seq, h: q.h, s: q.s, up: q.seq[1] > q.seq[0] };
     const big = Math.max(q.a, q.b, q.c);
     if (big <= 20 && !/Tens/.test(L.kind)) {
       let cells = [];
@@ -305,6 +382,7 @@
     text,
     choices,
     steps,
+    stepsNote,
     visual,
     level,
     sign,

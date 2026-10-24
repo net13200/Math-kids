@@ -40,11 +40,24 @@
 
   // "כַּמָּה זֶה שְׁמוֹנֶה וְעוֹד חָמֵשׁ?" / "שָׁלוֹשׁ וְעוֹד כַּמָּה שָׁוֶה שֶׁבַע?"
   function questionSpeech(q) {
+    // "שֶׁבַע, זוּגִי אוֹ אִי־זוּגִי?"
+    if (q.f === "par") return [comma(seg.num(q.n)), ask(seg.p("evenOrOdd"))];
+    // "סוֹפְרִים בִּקְפִיצוֹת שֶׁל שְׁתַּיִם: שְׁתַּיִם, אַרְבַּע, שֵׁשׁ, כַּמָּה?"
+    if (q.f === "seq") {
+      const items = q.seq.map((n, i) => (i === q.h ? seg.p("unknown") : seg.num(n)));
+      const head = [seg.p(q.seq[1] > q.seq[0] ? "countBy" : "countBack"), { ...seg.num(q.s), text: seg.num(q.s).text + ":" }];
+      return [...head, ...items.slice(0, -1).map(comma), ask(items[items.length - 1])];
+    }
     if (q.m === "c") return [seg.p("howMuch"), seg.num(q.a), seg.op(q.op), ask(seg.num(q.b))];
     const part = (k) => (q.m === k ? seg.p("unknown") : seg.num(q[k]));
     return [part("a"), seg.op(q.op), part("b"), seg.op("="), ask(seg.num(q.c))];
   }
-  const equationSpeech = (q) => [seg.num(q.a), seg.op(q.op), seg.num(q.b), seg.op("="), seg.num(q.c)];
+  const comma = (s) => ({ ...s, text: s.text + "," });
+  function equationSpeech(q) {
+    if (q.f === "par") return [seg.num(q.n), seg.p(G.answer(q))];
+    if (q.f === "seq") return [...q.seq.slice(0, -1).map((n) => comma(seg.num(n))), seg.num(q.seq[q.seq.length - 1])];
+    return [seg.num(q.a), seg.op(q.op), seg.num(q.b), seg.op("="), seg.num(q.c)];
+  }
 
   // ---------- Guide character: a fox ----------
   const GUIDE = `
@@ -121,7 +134,7 @@
       `<div class="parent-page welcome">
         <div class="hero">${GUIDE}</div>
         <h1>ברוכים הבאים ל<span class="brand">${D.APP_NAME}</span></h1>
-        <p>תרגול חשבון לכיתות א׳–ב׳, שמשלים את מה שנלמד בכיתה: חיבור, חיסור וחברים של 10 — ברמה שאתם קובעים.</p>
+        <p>תרגול חשבון לכיתות א׳–ב׳, שמשלים את מה שנלמד בכיתה: חיבור, חיסור, חברים של 10, זוגי ואי־זוגי — ברמה שאתם קובעים.</p>
         <p class="muted">כל המידע נשמר על המכשיר הזה בלבד. אין חשבון, אין שרת, אין פרסומות.</p>
         <button class="btn primary" id="go">יצירת פרופיל לילד</button>
       </div>`,
@@ -349,6 +362,18 @@
 
   // ---------- Help visuals ----------
   function visualHtml(vis) {
+    if (vis.type === "pairs") {
+      // Two rows: every column is a pair; an odd number leaves one dot alone.
+      const cols = Math.ceil(vis.n / 2);
+      const cells = Array.from({ length: vis.n }, (_, i) => `<i class="${vis.n % 2 && i === vis.n - 1 ? "b" : "a"}"></i>`);
+      const units = vis.units ? `<div class="vis-label">ספרת האחדות</div>` : "";
+      return `${units}<div class="pairs" style="grid-template-columns:repeat(${cols}, 26px)">${cells.join("")}</div>`;
+    }
+    if (vis.type === "hops") {
+      const jump = `<span class="hop">${vis.up ? "+" : "−"}${vis.s}</span>`;
+      const items = vis.seq.map((n, i) => `<span class="hop-n ${i === vis.h ? "slot" : ""}">${i === vis.h ? "?" : n}</span>`);
+      return `<div class="hops">${items.join(jump)}</div>`;
+    }
     if (vis.type === "pics") {
       const cells = vis.cells.map((c, i) => {
         const gap = i > 0 && c !== vis.cells[i - 1] && vis.cells[i - 1] === "a" && c === "b" ? " gap" : "";
@@ -391,13 +416,22 @@
     const ans = G.answer(q);
     const mode = S.answerMode(p, q);
     const vis = G.visual(q);
-    const part = (k) => (q.m === k ? `<span class="n blank" id="blank">?</span>` : `<span class="n">${q[k]}</span>`);
-    const problem = `<div class="problem" dir="ltr">${part("a")}<span class="op">${G.sign(q.op)}</span>${part("b")}<span class="op">=</span>${part("c")}</div>`;
+    const blankHtml = `<span class="n blank" id="blank">?</span>`;
+    const part = (k) => (q.m === k ? blankHtml : `<span class="n">${q[k]}</span>`);
+    let problem;
+    if (q.f === "par") problem = `<div class="problem par" dir="ltr" data-form="par"><span class="n">${q.n}</span></div>`;
+    else if (q.f === "seq")
+      problem = `<div class="problem seq" dir="ltr" data-form="seq">${q.seq
+        .map((n, i) => (i === q.h ? blankHtml : `<span class="n">${n}</span>`))
+        .join(`<span class="sep">,</span>`)}</div>`;
+    else problem = `<div class="problem" dir="ltr">${part("a")}<span class="op">${G.sign(q.op)}</span>${part("b")}<span class="op">=</span>${part("c")}</div>`;
+    const card = (v) =>
+      q.f === "par"
+        ? `<button class="card word" data-v="${v}"><span>${D.PARITY_LABEL[v]}</span></button>`
+        : `<button class="card num" data-v="${v}"><span dir="ltr">${v}</span></button>`;
     const answers =
       mode === "choice"
-        ? `<div class="choices">${G.choices(q)
-            .map((n) => `<button class="card num" data-v="${n}"><span dir="ltr">${n}</span></button>`)
-            .join("")}</div>`
+        ? `<div class="choices">${G.choices(q).map(card).join("")}</div>`
         : `<div class="keypad" dir="ltr">${[1, 2, 3, 4, 5, 6, 7, 8, 9, "del", 0, "ok"]
             .map((k) => {
               const label = k === "del" ? "⌫" : k === "ok" ? "✓" : k;
@@ -419,7 +453,8 @@
     let attempts = 0;
     let locked = false;
     let entry = "";
-    const blank = $("#blank");
+    // Even/odd has no blank in the exercise; the chosen card shows the answer.
+    const blank = $("#blank") || document.createElement("span");
     const prompt = () => talk(questionSpeech(q));
     v.replay = prompt;
 
@@ -446,7 +481,11 @@
     async function wrong(btn) {
       attempts++;
       A.sfx.soft();
-      if (btn) {
+      if (btn && q.f === "par") {
+        // Only two answers: keep both, or the second guess needs no thinking.
+        btn.classList.add("shake");
+        setTimeout(() => btn.classList.remove("shake"), 400);
+      } else if (btn) {
         btn.classList.add("wrong");
         btn.disabled = true;
       }
@@ -463,11 +502,12 @@
       // Second miss: the way to the answer; the exercise comes back later.
       blank.textContent = ans;
       blank.classList.add("reveal");
-      $$(".card").forEach((b) => Number(b.dataset.v) === ans && b.classList.add("reveal"));
+      $$(".card").forEach((b) => b.dataset.v === String(ans) && b.classList.add("reveal"));
       $("#visual").hidden = true;
       $("#help").hidden = true;
       const steps = $("#steps");
-      steps.innerHTML = stepsHtml(G.steps(q));
+      const note = G.stepsNote(q);
+      steps.innerHTML = (note ? `<div class="note" dir="rtl">${esc(note)}</div>` : "") + stepsHtml(G.steps(q));
       steps.hidden = false;
       if (!session.requeued.has(G.key(q))) {
         session.requeued.add(G.key(q));
@@ -487,7 +527,7 @@
       $$(".card").forEach((btn) =>
         btn.addEventListener("click", () => {
           if (locked || btn.disabled) return;
-          if (Number(btn.dataset.v) === ans) right(btn);
+          if (btn.dataset.v === String(ans)) right(btn);
           else wrong(btn);
         })
       );

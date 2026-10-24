@@ -30,6 +30,7 @@
       if (!raw) return blank();
       const s = JSON.parse(raw);
       if (!s || !Array.isArray(s.profiles)) return blank();
+      s.profiles.forEach(upgrade);
       return s;
     } catch (_) {
       return blank();
@@ -74,6 +75,13 @@
     for (const t of D.TOPICS) {
       const cur = p.topics[t.id];
       p.topics[t.id] = { on: cur ? cur.on : true, lv: t.start[grade] || 1, since: Date.now() };
+    }
+  }
+
+  // A topic added in a later version starts at the grade's level.
+  function upgrade(p) {
+    for (const t of D.TOPICS) {
+      if (!p.topics[t.id]) p.topics[t.id] = { on: true, lv: t.start[p.grade] || 1, since: Date.now() };
     }
   }
 
@@ -246,8 +254,10 @@
 
   // How the answer is given: the parent's fixed choice, or the level's default.
   function answerMode(p, q) {
+    const L = G.level(q.t, q.lv);
+    if (L.choiceOnly) return "choice";
     if (p.answerMode === "choice" || p.answerMode === "type") return p.answerMode;
-    return G.level(q.t, q.lv).answer;
+    return L.answer;
   }
 
   // ---------- Stickers ----------
@@ -280,6 +290,7 @@
   function importData(text) {
     const s = JSON.parse(text);
     if (!s || !Array.isArray(s.profiles)) throw new Error("bad backup");
+    s.profiles.forEach(upgrade);
     state = s;
     if (!state.profiles.some((x) => x.id === state.activeId)) state.activeId = state.profiles.length ? state.profiles[0].id : null;
     save();

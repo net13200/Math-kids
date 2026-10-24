@@ -17,9 +17,9 @@ function fresh(grade = "א") {
 
 test("grade sets the starting levels", () => {
   const { p } = fresh("א");
-  assert.deepEqual([p.topics.add.lv, p.topics.sub.lv, p.topics.bond.lv], [3, 3, 2]);
+  assert.deepEqual([p.topics.add.lv, p.topics.sub.lv, p.topics.bond.lv, p.topics.parity.lv], [3, 3, 2, 2]);
   const b = fresh("ב").p;
-  assert.deepEqual([b.topics.add.lv, b.topics.sub.lv, b.topics.bond.lv], [5, 5, 4]);
+  assert.deepEqual([b.topics.add.lv, b.topics.sub.lv, b.topics.bond.lv, b.topics.parity.lv], [5, 5, 4, 4]);
 });
 
 test("a session has 10 exercises from the active topics, no repeats", () => {
@@ -33,7 +33,7 @@ test("a session has 10 exercises from the active topics, no repeats", () => {
     // Current level, or one below for review.
     assert.ok(tasks.every((q) => q.lv === p.topics[q.t].lv || q.lv === p.topics[q.t].lv - 1));
   }
-  p.topics.add.on = p.topics.bond.on = false;
+  p.topics.add.on = p.topics.bond.on = p.topics.parity.on = false;
   assert.equal(S.planSession(p, 99).length, 0);
 });
 
@@ -114,6 +114,22 @@ test("no suggestions with auto progress off, but a passed level still earns its 
   }
   assert.equal(S.suggestions(p).length, 0);
   assert.deepEqual(plain({ ...passed }), { t: "bond", lv: 2 });
+});
+
+test("a profile from before a new topic gets it at the grade's level", () => {
+  const App = load();
+  const old = App.store.newProfile("ב");
+  delete old.topics.parity;
+  const raw = JSON.stringify({ version: 1, activeId: old.id, profiles: [old] });
+  App.store.importData(raw);
+  assert.equal(App.store.profile().topics.parity.lv, 4);
+});
+
+test("even / odd is always answered by choosing", () => {
+  const { S, p } = fresh();
+  p.answerMode = "type";
+  assert.equal(S.answerMode(p, { t: "parity", lv: 2 }), "choice");
+  assert.equal(S.answerMode(p, { t: "parity", lv: 5 }), "type");
 });
 
 test("answer form: by level, or fixed by the parent", () => {

@@ -61,6 +61,18 @@ function check(cond, msg) {
 
 // Solve what is on screen ("8 + 5 = ?", "3 + ? = 7") from the DOM.
 async function readProblem(page) {
+  const form = await page.$eval(".problem", (e) => e.dataset.form || "");
+  if (form === "par") {
+    const n = Number(await page.textContent(".problem .n"));
+    return { text: String(n), ans: n % 2 ? "odd" : "even" };
+  }
+  if (form === "seq") {
+    const items = await page.$$eval(".problem .n", (els) => els.map((e) => e.textContent.trim()));
+    const known = items.map((x, i) => [i, Number(x)]).filter(([i]) => items[i] !== "?");
+    const step = (known[1][1] - known[0][1]) / (known[1][0] - known[0][0]);
+    const h = items.indexOf("?");
+    return { text: items.join(", "), ans: known[0][1] + step * (h - known[0][0]) };
+  }
   const parts = await page.$$eval(".problem > span", (els) => els.map((e) => e.textContent.trim()));
   const [a, op, b, , c] = parts;
   const n = (x) => Number(x);
@@ -95,8 +107,8 @@ async function giveAnswer(page, value) {
 
 async function wrongValue(page, ans) {
   if ((await mode(page)) === "type") return ans + 1;
-  const vals = await page.$$eval(".card:not([disabled])", (els) => els.map((e) => Number(e.dataset.v)));
-  return vals.find((v) => v !== ans);
+  const vals = await page.$$eval(".card:not([disabled])", (els) => els.map((e) => e.dataset.v));
+  return vals.find((v) => v !== String(ans));
 }
 
 const waitIdle = (page) => page.waitForTimeout(120);
@@ -149,7 +161,7 @@ async function setup(page, fn, arg) {
     if (i === 0) {
       await shot("03-exercise-" + (await mode(page)));
       await giveAnswer(page, q.ans);
-      await page.waitForSelector(".blank.right");
+      await page.waitForSelector(".blank.right, .card.right");
       check(true, `right answer: ${q.text} → ${q.ans}`);
     } else if (i === 1) {
       await page.evaluate(() => (window.__said = []));
@@ -168,7 +180,7 @@ async function setup(page, fn, arg) {
       check(true, "second miss: the way to the answer is shown");
       await shot("05-second-miss");
       await page.click("#next");
-      await page.waitForSelector(".problem .blank:not(.reveal)");
+      await page.waitForFunction(() => !document.querySelector("#next"));
       const total = await page.$$eval(".dots i", (d) => d.length);
       check(total === 11, "the missed exercise comes back later in the session");
     } else {
@@ -176,7 +188,7 @@ async function setup(page, fn, arg) {
     }
     seen++;
     i++;
-    await page.waitForFunction(() => !document.querySelector(".blank.right, .blank.reveal") || document.querySelector(".end"), null, { timeout: 4000 });
+    await page.waitForFunction(() => !document.querySelector(".blank.right, .blank.reveal, .card.right") || document.querySelector(".end"), null, { timeout: 4000 });
   }
   check(ltrOk, "every exercise is written left to right");
   await page.waitForSelector(".end", { timeout: 4000 });
@@ -220,6 +232,12 @@ async function setup(page, fn, arg) {
     ["sub", 8, "two-digit with borrowing"],
     ["bond", 5, "to the next ten"],
     ["bond", 6, "friends of 100"],
+    ["parity", 1, "even/odd to 10, dots in pairs"],
+    ["parity", 2, "even/odd to 20"],
+    ["parity", 3, "even/odd to 100"],
+    ["parity", 4, "counting by 2"],
+    ["parity", 5, "counting by 2, 5, 10"],
+    ["parity", 6, "counting back"],
   ];
   console.log("Each exercise type: right and wrong paths, screenshots");
   for (const [t, lv, label] of types) {
@@ -241,7 +259,7 @@ async function setup(page, fn, arg) {
     await page.click("#next");
     const q2 = await readProblem(page);
     await giveAnswer(page, q2.ans);
-    await page.waitForSelector(".blank.right");
+    await page.waitForSelector(".blank.right, .card.right");
     check(ltr && fits, `${label}: ${q.text}, left to right, fits the screen`);
   }
   await only("add", 6, "choice", "ב");

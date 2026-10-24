@@ -82,9 +82,13 @@ for (const t of D.TOPICS) {
     for (let r = 0; r < REPS; r++) all.push({ q: G.make(t.id, i + 1), L, t: t.id, lv: i + 1 });
   });
 }
+// a op b = c exercises; even/odd and skip counting are tested below.
+const arith = all.filter((x) => !x.q.f);
+const parity = all.filter((x) => x.q.f === "par");
+const seqs = all.filter((x) => x.q.f === "seq");
 
 test("exercises are correct and never negative", () => {
-  for (const { q } of all) {
+  for (const { q } of arith) {
     assert.equal(q.op === "+" ? q.a + q.b : q.a - q.b, q.c, JSON.stringify(q));
     for (const k of ["a", "b", "c"]) assert.ok(Number.isInteger(q[k]) && q[k] >= 0, JSON.stringify(q));
     assert.ok(["a", "b", "c"].includes(q.m));
@@ -92,7 +96,7 @@ test("exercises are correct and never negative", () => {
 });
 
 test("operands are never zero, results stay in range", () => {
-  for (const { q, L } of all) {
+  for (const { q, L } of arith) {
     assert.ok(q.a > 0 && q.b > 0, JSON.stringify(q));
     if (L.max) assert.ok(Math.max(q.a, q.c) <= L.max, `${L.d}: ${JSON.stringify(q)}`);
     assert.ok(q.c <= 100 && q.a <= 100, JSON.stringify(q));
@@ -102,7 +106,7 @@ test("operands are never zero, results stay in range", () => {
 const unitsCarry = (q) => (q.op === "+" ? (q.a % 10) + (q.b % 10) >= 10 : q.b % 10 > q.a % 10);
 
 test("carrying only where the level allows it", () => {
-  for (const { q, L } of all) {
+  for (const { q, L } of arith) {
     if (L.carry === false) assert.ok(!unitsCarry(q), `${L.d}: ${JSON.stringify(q)}`);
     if (L.carry === true) assert.ok(unitsCarry(q), `${L.d}: ${JSON.stringify(q)}`);
     if (L.kind === "addTens" || L.kind === "subTens") assert.ok(q.a % 10 === 0 && q.b % 10 === 0);
@@ -117,7 +121,7 @@ test("levels that mix carrying have both kinds", () => {
 });
 
 test("friends of 10 / 20 / 100 add up to the total", () => {
-  for (const { q, L } of all) {
+  for (const { q, L } of arith) {
     if (L.kind === "bond" && L.total) assert.equal(q.c, L.total);
     if (L.kind === "bond" && L.totalMin) assert.ok(q.c >= L.totalMin && q.c <= L.totalMax);
     if (L.kind === "toTen") assert.ok(q.c % 10 === 0 && q.c - q.a < 10 && q.a % 10 !== 0);
@@ -127,7 +131,7 @@ test("friends of 10 / 20 / 100 add up to the total", () => {
 });
 
 test("missing-number exercises appear only where the level has them", () => {
-  for (const t of D.TOPICS.filter((x) => x.id !== "bond")) {
+  for (const t of D.TOPICS.filter((x) => x.id === "add" || x.id === "sub")) {
     t.levels.forEach((L, i) => {
       const qs = all.filter((x) => x.t === t.id && x.lv === i + 1).map((x) => x.q);
       const missing = qs.filter((q) => q.m !== "c").length;
@@ -140,7 +144,7 @@ test("missing-number exercises appear only where the level has them", () => {
 });
 
 test("three choices: different, not negative, one of them right", () => {
-  for (const { q } of all) {
+  for (const { q } of arith) {
     const cs = G.choices(q);
     assert.equal(cs.length, 3, JSON.stringify(q));
     assert.equal(new Set(cs).size, 3, JSON.stringify(q) + " " + cs);
@@ -150,7 +154,7 @@ test("three choices: different, not negative, one of them right", () => {
 });
 
 test("distractors are close to the answer", () => {
-  for (const { q } of all) {
+  for (const { q } of arith) {
     const ans = G.answer(q);
     for (const n of G.choices(q)) assert.ok(Math.abs(n - ans) <= Math.max(20, ans), `${G.text(q)} → ${n}`);
   }
@@ -158,7 +162,7 @@ test("distractors are close to the answer", () => {
 
 test("solution steps are true equations ending in the answer", () => {
   const evalSide = (s) => s.split("=").map((x) => Function(`return (${x.replace(/−/g, "-")})`)());
-  for (const { q } of all) {
+  for (const { q } of arith) {
     const lines = G.steps(q);
     assert.ok(lines.length >= 1);
     for (const l of lines) {
@@ -180,7 +184,7 @@ test("steps for typical cases", () => {
 });
 
 test("help visuals match the exercise", () => {
-  for (const { q } of all) {
+  for (const { q } of arith) {
     const v = G.visual(q);
     if (v.type === "frames" || v.type === "pics") {
       const count = (c) => v.cells.filter((x) => x === c).length;
@@ -194,6 +198,55 @@ test("help visuals match the exercise", () => {
       else assert.ok(val(v.groups[0], ["a"]) === q.c && val(v.groups[0], ["x"]) === q.b, G.text(q));
     }
   }
+});
+
+test("even / odd: numbers in range, two fixed answers", () => {
+  assert.ok(parity.length > 0);
+  for (const { q, L } of parity) {
+    assert.ok(Number.isInteger(q.n) && q.n >= 1 && q.n <= L.max, JSON.stringify(q));
+    assert.equal(G.answer(q), q.n % 2 ? "odd" : "even");
+    assert.deepEqual(plain(G.choices(q)), ["even", "odd"]);
+    assert.ok(G.stepsNote(q).length > 0);
+  }
+  // Both answers appear, and level 3 goes above 20.
+  assert.ok(parity.some((x) => G.answer(x.q) === "odd") && parity.some((x) => G.answer(x.q) === "even"));
+  assert.ok(parity.filter((x) => x.lv === 3).every((x) => x.q.n > 20));
+});
+
+test("even / odd steps: pairs add up to the units digit", () => {
+  for (const { q } of parity) {
+    for (const l of G.steps(q)) {
+      const [lhs, rhs] = l.split(" = ");
+      assert.equal(Number(lhs), q.n <= 10 ? q.n : q.n % 10);
+      assert.equal(rhs.split(" + ").reduce((x, y) => x + Number(y), 0), Number(lhs));
+    }
+  }
+  const note = (n) => G.stepsNote({ t: "parity", lv: 1, f: "par", n });
+  assert.ok(note(57).includes("7") && note(57).includes(D.PARITY_LABEL.odd));
+  assert.ok(note(40).includes(D.PARITY_LABEL.even));
+});
+
+test("skip counting: even jumps, in range, the right direction", () => {
+  assert.ok(seqs.length > 0);
+  for (const { q, L } of seqs) {
+    assert.equal(q.seq.length, 4);
+    assert.ok(L.steps.includes(q.s));
+    for (let i = 1; i < 4; i++) assert.equal(q.seq[i] - q.seq[i - 1], L.back ? -q.s : q.s, JSON.stringify(q));
+    assert.ok(q.seq.every((n) => n > 0 && n <= L.max), JSON.stringify(q));
+    assert.ok(q.h >= 0 && q.h < 4);
+    assert.equal(G.answer(q), q.seq[q.h]);
+    const cs = G.choices(q);
+    assert.equal(new Set(cs).size, 3, JSON.stringify(q) + " " + cs);
+    assert.ok(cs.includes(G.answer(q)) && cs.every((n) => n >= 0));
+    // The step is a true equation that gives the missing number.
+    const [l] = G.steps(q);
+    const [lhs, rhs] = l.split(" = ");
+    assert.equal(Function(`return (${lhs.replace("−", "-")})`)(), Number(rhs));
+    assert.equal(Number(rhs), G.answer(q));
+  }
+  // Counting by 2 from an odd number appears only where the level allows it.
+  assert.ok(seqs.filter((x) => !x.L.oddStart).every((x) => x.q.seq[0] % 2 === 0 || x.q.s !== 2));
+  assert.ok(seqs.some((x) => x.q.s === 2 && x.q.seq[0] % 2 === 1));
 });
 
 test("starting levels exist for both grades", () => {
