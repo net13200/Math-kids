@@ -1,6 +1,6 @@
 /* Offline support: everything the app needs is cached on install.
  * Bump CACHE on every release, or phones keep the old version. */
-const CACHE = "mathkids-v1";
+const CACHE = "mathkids-v2";
 const SHELL = [
   "./",
   "index.html",
